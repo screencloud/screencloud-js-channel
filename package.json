@@ -1,0 +1,15 @@
+{
+  "name": "screencloud-js-channel",
+  "version": "0.1.0",
+  "description": "setup communication channels between frames using post message",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/screencloud/screencloud-js-channel.git"
+  },
+  "author": "luke@screen.cloud",
+  "license": "ISC"
+}
