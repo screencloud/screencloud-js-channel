@@ -3,7 +3,7 @@ var util = require('util')
 var DEBUG = true
 var console = global.console
 var PREFIX = '[channel] '
-var DEBUG = DEBUG || true
+var DEBUG = false // DEBUG || false
 
 function Channel (opts) {
   EventEmitter.call(this)
@@ -76,7 +76,11 @@ Channel.prototype.setInput = function (input, filter) {
       if (self.setOutputOnFirstInput && self.output === undefined) {
         self.setOutput(event.source, event.origin)
       }
-      self._receive(event.data, event)
+      if (typeof (event.data) === 'string') {
+        self._receive(event.data, event)
+      } else {
+        self._handle(event.data)
+      }
     }
   }
   if (input.on !== undefined) {
@@ -241,6 +245,9 @@ Channel.prototype._handleCall = function (call) {
       value = [self.id, self.name]
     } else {
       // otherwise call handler
+      if (self.handler[call.method] === undefined) {
+        throw new Error('missing method: ' + call.method)
+      }
       value = self.handler[call.method].apply(self.handler, call.args)
     }
 

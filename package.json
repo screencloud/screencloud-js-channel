@@ -11,5 +11,6 @@
     "url": "https://github.com/screencloud/screencloud-js-channel.git"
   },
   "author": "luke@screen.cloud",
-  "license": "ISC"
+  "license": "MIT",
+  "private": true
 }
