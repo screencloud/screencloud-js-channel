@@ -1,9 +1,9 @@
 var EventEmitter = require('events').EventEmitter
 var util = require('util')
-var DEBUG = true
+// var DEBUG = true
 var console = global.console
 var PREFIX = '[channel] '
-var DEBUG = false // DEBUG || false
+var DEBUG = process.env.DEBUG || false // DEBUG || false
 
 function Channel (opts) {
   EventEmitter.call(this)
@@ -71,7 +71,7 @@ Channel.prototype.setInput = function (input, filter) {
   var messageHandler = function (event) {
     // DEBUG && console.log(PREFIX + PREFIX, 'message event', event)
     var pass = filter === undefined || filter(self, input, event)
-    DEBUG && console.log(PREFIX + self.prefix + ' inbound message filter', pass, event)
+    // DEBUG && console.log(PREFIX + self.prefix + ' inbound message filter', pass, event)
     if (pass) {
       if (self.setOutputOnFirstInput && self.output === undefined) {
         self.setOutput(event.source, event.origin)
@@ -112,6 +112,7 @@ Channel.prototype.setOutput = function (output, targetOrigin) {
     self.output = function (message, targetOrigin) {
       output.postMessage(message, targetOrigin || (self._targetOrigin || '*'))
     }
+    self._output = output // stash for debugging
   } else {
     self.output = output
   }
@@ -127,11 +128,11 @@ Channel.prototype.connect = function (timeout) {
       }
       resolve()
     }).catch(function (err) {
-      DEBUG && console.log(PREFIX + err)
-      if (self.connected) {
-        self.connected = false
-        self.emit('disconnected')
-      }
+      DEBUG && console.log(PREFIX + 'error calling connect', err)
+      // if (self.connected) {
+      //   self.connected = false
+      //   self.emit('disconnected')
+      // }
       reject(err)
     })
   })
@@ -206,8 +207,13 @@ Channel.prototype._send = function (msg) {
 }
 
 Channel.prototype._receive = function (data) {
-  var msg = JSON.parse(data)
-  return this._handle(msg)
+  var self = this
+  try {
+    var msg = JSON.parse(data)
+    return this._handle(msg)
+  } catch(e) {
+    DEBUG && console.log(PREFIX + self.prefix + 'unable to handle / parse', data, e)
+  }
 }
 
 Channel.prototype._handle = function (msg) {
@@ -216,7 +222,7 @@ Channel.prototype._handle = function (msg) {
     this._handleEvent(msg.event)
   } else if (msg.call) {
     this._handleCall(msg.call)
-  } else if (msg.result) {
+  } else if (msg.hasOwnProperty('result')) {
     this._handleResult(msg.result)
   }
 }
@@ -264,6 +270,7 @@ Channel.prototype._handleCall = function (call) {
         })
       }).catch(function (err) {
         // catch any errors
+        DEBUG && console.error('error processing call', call, err)
         self._send({
           result: {
             id: call.id,
@@ -282,6 +289,7 @@ Channel.prototype._handleCall = function (call) {
     }
   } catch (e) {
     // anything goes wrong, return error
+    DEBUG && console.error('error processing call', call, e)
     this._send({
       result: {
         id: call.id,
@@ -299,12 +307,14 @@ Channel.prototype._handleResult = function (result) {
     DEBUG && console.log(PREFIX + self.prefix + 'no handler for result', result.id)
     return
   }
-  if (result.value !== undefined) {
+  if (result.hasOwnProperty('value')) {
     // if we have value, call resolve
     pending.resolve(result.value)
   } else if (result.error) {
     // in case of error, call reject
     pending.reject(new Error(result.error))
+  } else {
+    pending.resolve()
   }
   // remove the handler since we have processed it
   delete this._calls[result.id]
