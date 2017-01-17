@@ -3,7 +3,7 @@ var util = require('util')
 // var DEBUG = true
 var console = global.console
 var PREFIX = '[channel] '
-var DEBUG = process.env.DEBUG || false // DEBUG || false
+var DEBUG = process.env.DEBUG || false
 
 function Channel (opts) {
   EventEmitter.call(this)
@@ -51,6 +51,11 @@ function Channel (opts) {
   this._calls = {}
 
   this.connected = false
+
+  var self = this
+  this._addCleanup(function () {
+    clearInterval(self._timeoutInterval)
+  })
 }
 
 util.inherits(Channel, EventEmitter)
@@ -88,11 +93,17 @@ Channel.prototype.setInput = function (input, filter) {
     // handle case were input is event emitter
     self.input = input
     input.on('message', messageHandler)
+    self._addCleanup(function () {
+      input.removeListener('message', messageHandler)
+    })
   } else if (input.addEventListener) {
     // or case where its a window object
     DEBUG && console.log(PREFIX + self.prefix + 'input has addEventListener, add message event listener')
     self.input = input
     input.addEventListener('message', messageHandler)
+    self._addCleanup(function () {
+      input.removeEventListener('message', messageHandler)
+    })
   } else {
     throw new Error('unsupported input type, must be message emitter or event source')
   }
@@ -120,21 +131,11 @@ Channel.prototype.setOutput = function (output, targetOrigin) {
 
 Channel.prototype.connect = function (timeout) {
   var self = this
-  return new Promise(function (resolve, reject) {
-    self.call('__connect__', [self.id, self.name], timeout).then(function (id, name) {
-      if (!self.connected) {
-        self.connected = true
-        self.emit('connected', id)
-      }
-      resolve()
-    }).catch(function (err) {
-      DEBUG && console.log(PREFIX + 'error calling connect', err)
-      // if (self.connected) {
-      //   self.connected = false
-      //   self.emit('disconnected')
-      // }
-      reject(err)
-    })
+  return self.call('__connect__', [self.id, self.name], timeout).then(function (result) {
+    if (!self.connected) {
+      self.connected = true
+      self.emit('connected', result)
+    }
   })
 }
 
@@ -330,8 +331,8 @@ Channel.prototype._timeoutCheck = function () {
     var pending = this._calls[id]
     // DEBUG && console.log(PREFIX + (now - pending.timestamp))
     if ((now - pending.timestamp) > pending.timeout) {
-      DEBUG && console.log(PREFIX + self.prefix + 'timeout!')
-      pending.reject(new Error(self.prefix + 'call timeout'))
+      DEBUG && console.log(PREFIX + self.prefix + 'timeout!', pending)
+      pending.reject(new Error(self.prefix + 'call timeout ' + id))
       delete this._calls[id]
     }
   }
@@ -341,6 +342,26 @@ Channel.prototype._timeoutCheck = function () {
     clearInterval(self._timeoutInterval)
     delete self._timeoutInterval
   }
+}
+
+Channel.prototype._addCleanup = function (func) {
+  if (this._cleanupFuncs === undefined) {
+    this._cleanupFuncs = []
+  }
+  this._cleanupFuncs.push(func)
+}
+
+Channel.prototype.destroy = function () {
+  this.removeAllListeners()
+  if (this._cleanupFuncs === undefined) return
+  this._cleanupFuncs.forEach(function (func) {
+    try {
+      func()
+    } catch (e) {
+      // noop
+    }
+  })
+  delete this._cleanupFuncs
 }
 
 function randomId () {
